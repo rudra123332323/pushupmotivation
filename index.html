@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+  <style>
+    @media (min-width:600px) {
+      video{
+        height: 100vh;
+        width: 100vh;
+      }
+    }
+  </style>
+</head>
+
+<body style="margin:0; overflow:hidden; background:black;">
+
+<!-- Hidden camera -->
+<video id="video" autoplay playsinline style="width:100px; height:100px;"></video>
+
+<!-- Main video -->
+<video id="playVideo" style="
+  display:block;
+  margin:auto;
+  max-width:90vw;
+  max-height:90vh;
+" playsinline muted preload="auto" poster="unnamed.png">
+  <source src="ko.mp4" type="video/mp4" vol>
+</video>
+
+<script>
+const video = document.getElementById("video");
+const playVideo = document.getElementById("playVideo");
+
+// start camera
+navigator.mediaDevices.getUserMedia({ video: true })
+  .then(stream => video.srcObject = stream);
+
+// MediaPipe
+const faceMesh = new FaceMesh({
+  locateFile: file =>
+    `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+});
+
+faceMesh.setOptions({
+  maxNumFaces: 1,
+  refineLandmarks: true,
+  minDetectionConfidence: 0.6,
+  minTrackingConfidence: 0.6
+});
+
+// ------------------------
+// 🔥 SMOOTHING SYSTEM
+// ------------------------
+let smoothFaceWidth = 0;
+let smoothNoseZ = 0;
+
+const SMOOTHING = 0.5;
+
+function smooth(prev, current) {
+  return prev + (current - prev) * SMOOTHING;
+}
+
+// ------------------------
+// 🎯 STATE CONTROL
+// ------------------------
+let isPlaying = false;
+let stableFrames = 0;
+let cooldown = 0;
+
+// thresholds (UNCHANGED)
+const PLAY_WIDTH = 0.19;
+const PLAY_Z = 0;
+
+const STOP_WIDTH = 0.14;
+const STOP_Z = -0.1;
+
+const REQUIRED_STABLE = 5;
+
+// ------------------------
+// 🎬 VIDEO END HANDLER (FIXED)
+// ------------------------
+playVideo.onended = () => {
+  playVideo.currentTime = 0;
+  isPlaying = false;
+  stableFrames = 0;
+  cooldown = 10;
+};
+
+// ------------------------
+// 🧠 MAIN LOOP
+// ------------------------
+faceMesh.onResults(results => {
+  if (cooldown > 0) cooldown--;
+
+  if (results.multiFaceLandmarks.length > 0) {
+    const lm = results.multiFaceLandmarks[0];
+
+    const nose = lm[1];
+    const leftEye = lm[33];
+    const rightEye = lm[263];
+
+    const dx = leftEye.x - rightEye.x;
+    const dy = leftEye.y - rightEye.y;
+    const faceWidth = Math.sqrt(dx*dx + dy*dy);
+    const noseZ = nose.z;
+
+    smoothFaceWidth = smooth(smoothFaceWidth, faceWidth);
+    smoothNoseZ = smooth(smoothNoseZ, noseZ);
+
+    // ▶️ PLAY
+    if (
+      smoothFaceWidth > PLAY_WIDTH &&
+      smoothNoseZ < PLAY_Z &&
+      !isPlaying &&
+      cooldown === 0
+    ) {
+      stableFrames++;
+
+      if (stableFrames > REQUIRED_STABLE) {
+        playVideo.currentTime = 0;
+        playVideo.play();
+        playVideo.muted=false;
+        playVideo.volume = 1.0;
+        playVideo.currentTime=1.0;
+
+        isPlaying = true;
+        stableFrames = 0;
+        if(smoothNoseZ<-0.2){
+        playVideo.currentTime=3.0;
+        }
+      }
+    }
+
+    // ⏸ STOP (FIXED)
+    else if (
+      (smoothFaceWidth < STOP_WIDTH || smoothNoseZ > STOP_Z) &&
+      isPlaying &&
+      cooldown === 0
+    ) {
+      stableFrames++;
+
+      if (stableFrames > REQUIRED_STABLE) {
+        playVideo.pause();              // ✅ important
+        playVideo.currentTime = 0;      // ✅ reset
+
+        isPlaying = false;
+        stableFrames = 0;
+        cooldown = 10;
+      }
+    }
+
+    else {
+      stableFrames = 0;
+    }
+  }
+});
+
+// camera loop
+const camera = new Camera(video, {
+  onFrame: async () => {
+    await faceMesh.send({ image: video });
+  },
+  width: 640,
+  height: 480
+});
+
+camera.start();
+</script>
+
+</body>
+</html>
