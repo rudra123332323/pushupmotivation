@@ -143,10 +143,11 @@ faceMesh.onResults(results => {
         playVideo.play();
         playVideo.muted=false;
         playVideo.volume = 1.0;
-        playVideo.currentTime=1.0;
+        // playVideo.currentTime=1.0;
 
         isPlaying = true;
         stableFrames = 0;
+        
         if(smoothNoseZ<-0.2){
         playVideo.currentTime=3.0;
         }
