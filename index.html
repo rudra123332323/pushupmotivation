@@ -3,7 +3,6 @@
 <head>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
-  <link rel="icon" type="image/x-icon" href="camera.png">
   <style>
     .cam {
   position: fixed;
@@ -13,7 +12,7 @@
   max-width: 200px;
   height: auto;
   border-radius: 12px;
-  z-index: 1000;
+  z-index: 10;
   border: 2px solid white;
   box-shadow: 0 4px 20px rgba(0,0,0,0.6);
 }
@@ -90,8 +89,8 @@ let stableFrames = 0;
 let cooldown = 0;
 
 // thresholds (UNCHANGED)
-const PLAY_WIDTH = 0.16;
-const PLAY_Z = -0.05;
+const PLAY_WIDTH = 0.19;
+const PLAY_Z = -0.1;
 
 const STOP_WIDTH = 0.14;
 const STOP_Z = -0.1;
@@ -128,7 +127,7 @@ faceMesh.onResults(results => {
 
     smoothFaceWidth = smooth(smoothFaceWidth, faceWidth);
     smoothNoseZ = smooth(smoothNoseZ, noseZ);
-
+ 
     // ▶️ PLAY
     if (
       smoothFaceWidth > PLAY_WIDTH &&
@@ -141,18 +140,19 @@ faceMesh.onResults(results => {
       if (stableFrames > REQUIRED_STABLE) {
         playVideo.currentTime = 0;
         playVideo.play();
+        playVideo.currentTime=2.0;
         playVideo.muted=false;
         playVideo.volume = 1.0;
-        // playVideo.currentTime=1.0;
+        playVideo.currentTime=1.0;
 
         isPlaying = true;
         stableFrames = 0;
-        
+       
         if(smoothNoseZ<-0.2){
         playVideo.currentTime=3.0;
         }
-       
-       
+
+      }
     }
 
     // ⏸ STOP (FIXED)
@@ -176,7 +176,6 @@ faceMesh.onResults(results => {
     else {
       stableFrames = 0;
     }
-  }
   }
 });
 
