@@ -1,1 +1,365 @@
 
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+
+  <!-- MediaPipe Pose -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+
+  <link rel="icon" type="image/x-icon" href="camera.png">
+
+  <style>
+
+    body{
+      margin:0;
+      overflow:hidden;
+      background:black;
+      font-family:Arial;
+    }
+
+    /* MAIN VIDEO */
+    #playVideo{
+      display:block;
+      margin:auto;
+      width:100vw;
+      height:100vh;
+      object-fit:contain;
+      background:black;
+    }
+
+    /* CAMERA PREVIEW */
+    .cam{
+      position:fixed;
+      bottom:20px;
+      right:20px;
+      width:35vw;
+      max-width:230px;
+      border-radius:12px;
+      border:2px solid white;
+      z-index:1000;
+      transform:scaleX(-1);
+      box-shadow:0 4px 20px rgba(0,0,0,0.6);
+    }
+
+    /* SCORE */
+    #score{
+      position:fixed;
+      top:20px;
+      left:20px;
+      color:white;
+      font-size:70px;
+      font-weight:bold;
+      z-index:2000;
+      text-shadow:0 0 10px black;
+    }
+
+    /* STATUS */
+    #status{
+      position:fixed;
+      top:110px;
+      left:20px;
+      color:lime;
+      font-size:35px;
+      z-index:2000;
+      text-shadow:0 0 10px black;
+    }
+
+    /* BODY LANDMARK DOTS */
+    .dot{
+      position:absolute;
+      width:12px;
+      height:12px;
+      background:lime;
+      border-radius:50%;
+      transform:translate(-50%, -50%);
+      z-index:1500;
+      box-shadow:0 0 10px lime;
+    }
+
+  </style>
+</head>
+
+<body>
+
+<!-- SCORE -->
+<div id="score">0</div>
+
+<!-- STATUS -->
+<div id="status">Waiting...</div>
+
+<!-- CAMERA -->
+<video
+  id="video"
+  autoplay
+  playsinline
+  muted
+  class="cam"
+></video>
+
+<!-- MAIN REWARD VIDEO -->
+<video
+  id="playVideo"
+  playsinline
+  preload="auto"
+  poster="unnamed.png"
+>
+  <source src="ko.mp4" type="video/mp4">
+</video>
+
+<script>
+
+// ==========================
+// ELEMENTS
+// ==========================
+const video = document.getElementById("video");
+const playVideo = document.getElementById("playVideo");
+
+const scoreDiv = document.getElementById("score");
+const statusDiv = document.getElementById("status");
+
+
+// ==========================
+// START CAMERA
+// ==========================
+navigator.mediaDevices.getUserMedia({
+  video:true,
+  audio:false
+})
+.then(stream=>{
+
+  video.srcObject = stream;
+
+})
+.catch(err=>{
+
+  console.log("Camera Error:", err);
+
+});
+
+
+// ==========================
+// MEDIAPIPE POSE
+// ==========================
+const pose = new Pose({
+
+  locateFile:(file)=>{
+    return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+  }
+
+});
+
+
+// ==========================
+// SETTINGS
+// ==========================
+pose.setOptions({
+
+  modelComplexity:1,
+
+  smoothLandmarks:true,
+
+  enableSegmentation:false,
+
+  minDetectionConfidence:0.5,
+
+  minTrackingConfidence:0.5
+
+});
+
+
+// ==========================
+// CREATE BODY DOTS
+// ==========================
+const dots = [];
+
+for(let i=0; i<33; i++){
+
+  const dot = document.createElement("div");
+
+  dot.classList.add("dot");
+
+  document.body.appendChild(dot);
+
+  dots.push(dot);
+
+}
+
+
+// ==========================
+// PUSHUP STATE
+// ==========================
+let pushupDown = false;
+
+let score = 0;
+
+let cooldown = 0;
+
+
+// ==========================
+// THRESHOLDS
+// ==========================
+const DOWN_Y = 0.65;
+
+const UP_Y = 0.45;
+
+
+// ==========================
+// VIDEO END
+// ==========================
+playVideo.onended = ()=>{
+
+  playVideo.currentTime = 0;
+
+};
+
+
+// ==========================
+// MAIN POSE LOOP
+// ==========================
+pose.onResults(results=>{
+
+  // cooldown
+  if(cooldown > 0){
+
+    cooldown--;
+
+  }
+
+  // no body
+  if(!results.poseLandmarks){
+
+    statusDiv.innerHTML = "No Body";
+
+    return;
+
+  }
+
+  const landmarks = results.poseLandmarks;
+
+
+  // ==========================
+  // DRAW BODY LANDMARKS
+  // ==========================
+  landmarks.forEach((lm,index)=>{
+
+    const x = window.innerWidth * (1 - lm.x);
+
+    const y = window.innerHeight * lm.y;
+
+    dots[index].style.left = `${x}px`;
+
+    dots[index].style.top = `${y}px`;
+
+  });
+
+
+  // ==========================
+  // NOSE
+  // ==========================
+  const nose = landmarks[0];
+
+  const noseY = nose.y;
+
+  console.log("Nose Y:", noseY);
+
+
+  // ==========================
+  // GOING DOWN
+  // ==========================
+  if(
+
+    noseY > DOWN_Y &&
+    !pushupDown &&
+    cooldown === 0
+
+  ){
+
+    pushupDown = true;
+
+    statusDiv.innerHTML = "DOWN ⬇️";
+
+  }
+
+
+  // ==========================
+  // COMING UP
+  // ==========================
+  if(
+
+    noseY < UP_Y &&
+    pushupDown &&
+    cooldown === 0
+
+  ){
+
+    pushupDown = false;
+
+    score++;
+
+    scoreDiv.innerHTML = score;
+
+    statusDiv.innerHTML = "PUSHUP ✅";
+
+
+    // ==========================
+    // PLAY REWARD VIDEO
+    // ==========================
+    playVideo.currentTime = 0;
+
+    playVideo.muted = true;
+
+    playVideo.play()
+
+    .then(()=>{
+
+      setTimeout(()=>{
+
+        playVideo.muted = false;
+
+        playVideo.volume = 1.0;
+
+      },300);
+
+    })
+
+    .catch(err=>{
+
+      console.log("Play Error:", err);
+
+    });
+
+
+    // prevent spam counting
+    cooldown = 15;
+
+  }
+
+});
+
+
+// ==========================
+// CAMERA LOOP
+// ==========================
+const camera = new Camera(video,{
+
+  onFrame:async ()=>{
+
+    await pose.send({
+      image:video
+    });
+
+  },
+
+  width:640,
+  height:480
+
+});
+
+camera.start();
+
+</script>
+
+</body>
+</html>
